@@ -31,16 +31,15 @@ func app() error {
 		return err
 	}
 
-	for _, files := range protoMap {
-		addPackageOption(files)
-	}
 
 	var pds []ProtoDeclaration
 	for _, protoFiles := range protoMap {
 		pd, err := NewProtoDeclaration(protoFiles)
+
 		if err != nil {
 			return err
 		}
+		modifyFiles(pd)
 
 		pds = append(pds, pd)
 	}
@@ -57,15 +56,16 @@ func app() error {
 	// -------
 
 	for _, pd := range pds {
-		protocString := "--go_out=import_path=" + pd.PackageName + ","
-		for _, filename := range pd.Files {
-			protocString += "M" + filename + "=" + pd.PackageName + ","
-		}
+		//protocString := "--go_out=import_path=" + pd.PackageName + ","
+		//for _, filename := range pd.Files {
+		//	protocString += "M" + filename + "=" + pd.PackageName + ","
+		//}
 
-		hz := append([]string{"-I/usr/local/include", "-I" + pd.Folder, protocString + "plugins=grpc:" + packageFolder}, pd.Files...)
-		_ = hz
+		//protocString := " --go_out=generated, --go-grpc_out=generated,"
+		//hz := append([]string{"-I/usr/local/include", "-I" + pd.Folder, protocString}, pd.Files...)
+		//_ = hz
 		cmd := exec.Command("protoc",
-			append([]string{"-I/usr/local/include", "-I" + pd.Folder, protocString + "plugins=grpc:" + packageFolder}, pd.Files...)...)
+			append([]string{"-I/usr/local/include", "-I" + pd.Folder, "--go_out=" + pd.Folder + "/generated", "--go-grpc_out=" + pd.Folder + "/generated"}, pd.Files...)...)
 		cmd.Stderr = os.Stderr
 		cmd.Stdout = os.Stdout
 		err := cmd.Run()
@@ -137,13 +137,13 @@ func getProtoFiles(dir string) (map[protoFolder][]protoFile, error) {
 	return protoPaths, err
 }
 
-func addPackageOption(files []protoFile) {
-	for _, file := range files {
-		kokoko(file)
+func modifyFiles(pd ProtoDeclaration) {
+	for _, file := range pd.Files {
+		addPackageOption(file, pd.PackageName)
 	}
 }
 
-func kokoko(file protoFile)  {
+func addPackageOption(file protoFile, packageName string)  {
 
 	f, err := os.OpenFile(file,os.O_APPEND|os.O_RDWR, 0644)
 
@@ -153,18 +153,13 @@ func kokoko(file protoFile)  {
 	defer f.Close()
 
 	if isOptionExist(f) {
-		println("option exist!!!", file)
 
 		return
 	}
 
-	if _, err := f.WriteString(fmt.Sprintf(optionTemplate, "/generator")); err != nil {
+	if _, err := f.WriteString(fmt.Sprintf(optionTemplate, "/"+packageName)); err != nil {
 		panic(err)
 	}
-
-	println("option dont exist", file)
-
-
 }
 func isOptionExist(f *os.File) bool {
 
