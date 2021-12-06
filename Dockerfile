@@ -4,7 +4,8 @@ FROM golang:1.17
 RUN : \
     && apt-get update -y \
     && mkdir /input \
-    && mkdir /generator
+    && mkdir -p /home/generator \
+    && chmod 777 /home/generator
 
 # Install protobuf compiler
 RUN : \

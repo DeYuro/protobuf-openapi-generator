@@ -16,7 +16,12 @@ import (
 	"syscall"
 )
 
-const optionTemplate = "\noption go_package = \"%s\";\n"
+const (
+	optionTemplate = "\noption go_package = \"%s\";\n"
+	generatorTmpDir = "/home/generator"
+	inputDir        = "/input"
+	outputDir       = "/output"
+)
 
 func main() {
 	if err := app(); err != nil {
@@ -25,8 +30,8 @@ func main() {
 }
 
 func app() error {
-	err := CopyDirectory("/input", "/generator")
-	protoMap, err := getProtoFiles("/generator")
+	err := CopyDirectory(inputDir, generatorTmpDir)
+	protoMap, err := getProtoFiles(generatorTmpDir)
 	if err != nil {
 		return err
 	}
@@ -52,14 +57,21 @@ func app() error {
 		}
 	}
 
-	return nil
+	return cleanUp()
 }
 
-func generate(filePath, importPath string) error {
+func cleanUp() error {
+	dir, err := ioutil.ReadDir(generatorTmpDir)
+	for _, d := range dir {
+		_ = os.RemoveAll(path.Join([]string{generatorTmpDir, d.Name()}...))
+	}
 
+	return err
+}
+func generate(filePath, importPath string) error {
 	outputFile := sourceRelative(filePath)
-	outputDir := path.Dir(outputFile)
-	err := CreateIfNotExists(outputDir, 0755)
+	outputPath := path.Dir(outputFile)
+	err := CreateIfNotExists(outputPath, 0755)
 
 	if err != nil {
 		return err
@@ -68,14 +80,14 @@ func generate(filePath, importPath string) error {
 	cmd := exec.Command("protoc",
 		append([]string{"-I/usr/local/include",
 			"-I" + importPath,
-			"--openapi_out=" + outputDir}, filePath)...)
+			"--openapi_out=" + outputPath}, filePath)...)
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	err = cmd.Run()
 	if err != nil {
 		return err
 	}
-	err = renameFile(path.Join(outputDir, "openapi.yaml"), outputFile)
+	err = renameFile(path.Join(outputPath, "openapi.yaml"), outputFile)
 	if err != nil {
 		return err
 	}
@@ -87,7 +99,7 @@ func generate(filePath, importPath string) error {
 
 	return err
 }
-
+// removeWithoutTitle remove files which generated without title: means there is no API calls
 func removeWithoutTitle(outputFile string) error {
 	type openApi struct {
 		Info    struct {
@@ -119,7 +131,7 @@ func renameFile(generatedFile, outputFile string) error {
 
 //sourceRelative unfortunately plugin don`t have opt `paths=source relative`
 func sourceRelative(filePath string) string {
-	return strings.Replace(strings.Replace(filePath, "tmp", "output", 1), ".proto", ".yaml", 1)
+	return strings.Replace(strings.Replace(filePath, generatorTmpDir, outputDir, 1), ".proto", ".yaml", 1)
 }
 
 type (
@@ -199,7 +211,7 @@ func addPackageOption(file protoFile, packageName string) {
 		return
 	}
 
-	if _, err := f.WriteString(fmt.Sprintf(optionTemplate, "/"+packageName)); err != nil {
+	if _, err := f.WriteString(fmt.Sprintf(optionTemplate, "/"+packageName+ ";" + packageName)); err != nil {
 		panic(err)
 	}
 }
