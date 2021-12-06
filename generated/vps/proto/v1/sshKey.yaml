@@ -1,0 +1,95 @@
+# Generated with protoc-gen-openapi
+# https://github.com/google/gnostic/tree/master/apps/protoc-gen-openapi
+
+openapi: 3.0.3
+info:
+    title: SshKeyService
+    version: 0.0.1
+paths:
+    /v1/vps/sshKey:
+        get:
+            operationId: SshKeyService_GetAll
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetAllResponse'
+        post:
+            operationId: SshKeyService_Add
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AddRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AddResponse'
+    /v1/vps/sshKey/{id}:
+        delete:
+            operationId: SshKeyService_Remove
+            parameters:
+                - name: id
+                  in: query
+                  description: Идентификатор ключа
+                  schema:
+                    type: string
+                - name: force
+                  in: query
+                  description: Принудительно удалить, даже если используется в VPS
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RemoveResponse'
+components:
+    schemas:
+        AddRequest:
+            properties:
+                name:
+                    type: string
+                    description: Имя ключа (для удобства пользователя)
+                public_key:
+                    type: string
+                    description: Публичный ключ в формате, описанном в https://tools.ietf.org/html/rfc4253#section-6.6
+        AddResponse:
+            properties:
+                key:
+                    $ref: '#/components/schemas/SshKeyInfo'
+                error:
+                    $ref: '#/components/schemas/Error'
+        GetAllResponse:
+            properties:
+                keys:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SshKeyInfo'
+        RemoveResponse:
+            properties:
+                key:
+                    $ref: '#/components/schemas/SshKeyInfo'
+                error:
+                    $ref: '#/components/schemas/Error'
+        SshKeyInfo:
+            properties:
+                id:
+                    type: integer
+                    description: Идентификатор ключа
+                    format: uint32
+                name:
+                    type: string
+                    description: Имя ключа (для удобства пользователя)
+                fingerprint:
+                    type: string
+                    description: Отпечаток сохраненного публичного ключа
+            description: Описание публичного ssh-ключа, добавленного пользователем в систему

@@ -1,0 +1,170 @@
+# Generated with protoc-gen-openapi
+# https://github.com/google/gnostic/tree/master/apps/protoc-gen-openapi
+
+openapi: 3.0.3
+info:
+    title: NetworkService
+    version: 0.0.1
+paths:
+    /v1/vps/network:
+        get:
+            operationId: NetworkService_GetNetworkInfo
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetNetworkInfoResponse'
+        post:
+            summary: Заказ дополнительных IP-адресов для пользователя
+            operationId: NetworkService_OrderIpAddress
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OrderIpAddressRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OrderIpAddressResponse'
+    /v1/vps/network/{ip_address}:
+        delete:
+            summary: Отмена заказа дополнительного IP адреса пользователя
+            operationId: NetworkService_RemoveIpAddress
+            parameters:
+                - name: ip_address
+                  in: query
+                  description: IP-адрес
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RemoveIpAddressResponse'
+    /v1/vps/private-network:
+        post:
+            operationId: NetworkService_CreatePrivateNetwork
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreatePrivateNetworkRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreatePrivateNetworkResponse'
+    /v1/vps/private-network/{network_id}/suggested-address:
+        post:
+            operationId: NetworkService_SuggestPrivateAddress
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SuggestPrivateAddressRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SuggestPrivateAddressResponse'
+components:
+    schemas:
+        AdditionalIpInfo:
+            properties:
+                ip:
+                    type: string
+                    description: Дополнительный IP-адрес, принадлежащий пользователю
+                vps_id:
+                    type: string
+                    description: Идентификатор VPS, к которому привязан дополнительный IP-адрес
+        CreatePrivateNetworkRequest:
+            properties: {}
+        CreatePrivateNetworkResponse:
+            properties:
+                network:
+                    $ref: '#/components/schemas/PrivateNetwork'
+                error:
+                    $ref: '#/components/schemas/Error'
+        GetNetworkInfoResponse:
+            properties:
+                ip:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/IpInfo'
+                    description: Основные IP-адреса пользователя
+                additional_ip:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AdditionalIpInfo'
+                    description: Дополнительные IP-адреса пользователя
+                private_network:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PrivateNetwork'
+                    description: Приватные сети пользователя
+        IpInfo:
+            properties:
+                ip:
+                    type: string
+                    description: Основной IP-адрес VPS
+                mac:
+                    type: string
+                    description: MAC-адрес
+                vps_id:
+                    type: string
+                    description: Идентификатор VPS, к которому привязан дополнительный IP-адрес
+        OrderIpAddressRequest:
+            properties:
+                id:
+                    type: string
+                    description: Идентификатор VPS, к которому следует добавить дополнительный IP-адрес Поле не является обязательным
+        OrderIpAddressResponse:
+            properties:
+                ip_address:
+                    type: string
+                    description: Успешый заказ дополнительного IP-адресоа
+                error:
+                    $ref: '#/components/schemas/Error'
+        PrivateNetwork:
+            properties:
+                id:
+                    type: string
+                    description: Идентификатор сети
+                subnet:
+                    type: string
+                    description: IP адрес подсети, например, 10.0.0.0
+                mask:
+                    type: integer
+                    description: Маска подсети
+                    format: uint32
+        RemoveIpAddressResponse:
+            properties:
+                ip_address:
+                    type: string
+                    description: Успешое удаление дополнительного IP-адресоа
+                error:
+                    $ref: '#/components/schemas/Error'
+        SuggestPrivateAddressRequest:
+            properties:
+                network_id:
+                    type: string
+                vps_id:
+                    type: string
+        SuggestPrivateAddressResponse:
+            properties:
+                ip:
+                    type: string
