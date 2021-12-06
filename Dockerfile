@@ -1,23 +1,29 @@
 FROM golang:1.17
 
-
 # Common
 RUN : \
-    && apt-get update -y
+    && apt-get update -y \
+    && mkdir /input \
+    && mkdir /generator
 
 # Install protobuf compiler
 RUN : \
-    && apt-get install protobuf-compiler -y
+    && apt-get install protobuf-compiler -y;
 
+#  Copy asserts
+COPY assets/include /usr/local/include
+COPY assets/generator.go /go/src/generator/
 
 # Install protoc-gen-openapi
 RUN : \
-    && go install github.com/google/gnostic/apps/protoc-gen-openapi@latest \
-    && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.26 \
-    && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1
+    && go install github.com/google/gnostic/apps/protoc-gen-openapi@latest
 
-ADD assets/include /usr/local/include
+# Install generator
+RUN : \
+    && cd src/generator \
+    && go mod init \
+    && go mod tidy \
+    && go install
 
-COPY api /proto/api
 
-ENTRYPOINT ["sleep","infinity"]
+ENTRYPOINT ["generator"]

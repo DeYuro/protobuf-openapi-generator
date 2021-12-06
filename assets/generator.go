@@ -2,14 +2,18 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"gopkg.in/yaml.v2"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 const optionTemplate = "\noption go_package = \"%s\";\n"
@@ -21,65 +25,103 @@ func main() {
 }
 
 func app() error {
-	wd, err := os.Getwd()
+	err := CopyDirectory("/input", "/generator")
+	protoMap, err := getProtoFiles("/generator")
 	if err != nil {
 		return err
-	}
-
-	protoMap, err := getProtoFiles(path.Join(wd, "api"))
-	if err != nil {
-		return err
-	}
-
-	for _, files := range protoMap {
-		addPackageOption(files)
 	}
 
 	var pds []ProtoDeclaration
 	for _, protoFiles := range protoMap {
 		pd, err := NewProtoDeclaration(protoFiles)
+
 		if err != nil {
 			return err
 		}
+		modifyFiles(pd)
 
 		pds = append(pds, pd)
 	}
 
-	// Create folders
-	packageFolder := filepath.Join("internal", "grpc")
-	if err := os.RemoveAll(packageFolder); err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(packageFolder, os.ModePerm); err != nil {
-		return err
-	}
-	// -------
-
 	for _, pd := range pds {
-		protocString := "--go_out=import_path=" + pd.PackageName + ","
-		for _, filename := range pd.Files {
-			protocString += "M" + filename + "=" + pd.PackageName + ","
-		}
-
-		hz := append([]string{"-I/usr/local/include", "-I" + pd.Folder, protocString + "plugins=grpc:" + packageFolder}, pd.Files...)
-		_ = hz
-		cmd := exec.Command("protoc",
-			append([]string{"-I/usr/local/include", "-I" + pd.Folder, protocString + "plugins=grpc:" + packageFolder}, pd.Files...)...)
-		cmd.Stderr = os.Stderr
-		cmd.Stdout = os.Stdout
-		err := cmd.Run()
-		if err != nil {
-			return err
+		for _, file := range pd.Files {
+			err = generate(file, pd.Folder)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
 	return nil
 }
 
-func ps(arg ...string)  {
+func generate(filePath, importPath string) error {
 
+	outputFile := sourceRelative(filePath)
+	outputDir := path.Dir(outputFile)
+	err := CreateIfNotExists(outputDir, 0755)
+
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command("protoc",
+		append([]string{"-I/usr/local/include",
+			"-I" + importPath,
+			"--openapi_out=" + outputDir}, filePath)...)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	err = cmd.Run()
+	if err != nil {
+		return err
+	}
+	err = renameFile(path.Join(outputDir, "openapi.yaml"), outputFile)
+	if err != nil {
+		return err
+	}
+
+	err = removeWithoutTitle(outputFile)
+	if err != nil {
+		return err
+	}
+
+	return err
 }
+
+func removeWithoutTitle(outputFile string) error {
+	type openApi struct {
+		Info    struct {
+			Title   string `yaml:"title"`
+			Version string `yaml:"version"`
+		}
+	}
+	var openapi openApi
+	yamlFile, err := ioutil.ReadFile(outputFile)
+	if err != nil {
+		return err
+	}
+	err = yaml.Unmarshal(yamlFile, &openapi)
+
+	if openapi.Info.Title == "" {
+		_ = os.Remove(outputFile)
+	}
+	return err
+}
+
+func renameFile(generatedFile, outputFile string) error {
+	if _, err := os.Stat(path.Join(generatedFile, "openapi.yaml")); errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	err := os.Rename(generatedFile, outputFile)
+	return err
+}
+
+//sourceRelative unfortunately plugin don`t have opt `paths=source relative`
+func sourceRelative(filePath string) string {
+	return strings.Replace(strings.Replace(filePath, "tmp", "output", 1), ".proto", ".yaml", 1)
+}
+
 type (
 	protoFolder = string
 	protoFile   = string
@@ -137,15 +179,15 @@ func getProtoFiles(dir string) (map[protoFolder][]protoFile, error) {
 	return protoPaths, err
 }
 
-func addPackageOption(files []protoFile) {
-	for _, file := range files {
-		kokoko(file)
+func modifyFiles(pd ProtoDeclaration) {
+	for _, file := range pd.Files {
+		addPackageOption(file, pd.PackageName)
 	}
 }
 
-func kokoko(file protoFile)  {
+func addPackageOption(file protoFile, packageName string) {
 
-	f, err := os.OpenFile(file,os.O_APPEND|os.O_RDWR, 0644)
+	f, err := os.OpenFile(file, os.O_APPEND|os.O_RDWR, 0644)
 
 	if err != nil {
 		panic(err)
@@ -153,19 +195,15 @@ func kokoko(file protoFile)  {
 	defer f.Close()
 
 	if isOptionExist(f) {
-		println("option exist!!!", file)
 
 		return
 	}
 
-	if _, err := f.WriteString(fmt.Sprintf(optionTemplate, "/generator")); err != nil {
+	if _, err := f.WriteString(fmt.Sprintf(optionTemplate, "/"+packageName)); err != nil {
 		panic(err)
 	}
-
-	println("option dont exist", file)
-
-
 }
+
 func isOptionExist(f *os.File) bool {
 
 	scanner := bufio.NewScanner(f)
@@ -177,4 +215,106 @@ func isOptionExist(f *os.File) bool {
 	}
 
 	return false
+}
+
+//CopyDirectory func for prevent to use third side packages
+func CopyDirectory(scrDir, dest string) error {
+	entries, err := ioutil.ReadDir(scrDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		sourcePath := filepath.Join(scrDir, entry.Name())
+		destPath := filepath.Join(dest, entry.Name())
+
+		fileInfo, err := os.Stat(sourcePath)
+		if err != nil {
+			return err
+		}
+
+		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
+		if !ok {
+			return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
+		}
+
+		switch fileInfo.Mode() & os.ModeType {
+		case os.ModeDir:
+			if err := CreateIfNotExists(destPath, 0755); err != nil {
+				return err
+			}
+			if err := CopyDirectory(sourcePath, destPath); err != nil {
+				return err
+			}
+		case os.ModeSymlink:
+			if err := CopySymLink(sourcePath, destPath); err != nil {
+				return err
+			}
+		default:
+			if err := Copy(sourcePath, destPath); err != nil {
+				return err
+			}
+		}
+
+		if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
+			return err
+		}
+
+		isSymlink := entry.Mode()&os.ModeSymlink != 0
+		if !isSymlink {
+			if err := os.Chmod(destPath, entry.Mode()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func Copy(srcFile, dstFile string) error {
+	out, err := os.Create(dstFile)
+	if err != nil {
+		return err
+	}
+
+	defer out.Close()
+
+	in, err := os.Open(srcFile)
+	defer in.Close()
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func Exists(filePath string) bool {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return false
+	}
+
+	return true
+}
+
+func CreateIfNotExists(dir string, perm os.FileMode) error {
+	if Exists(dir) {
+		return nil
+	}
+
+	if err := os.MkdirAll(dir, perm); err != nil {
+		return fmt.Errorf("failed to create directory: '%s', error: '%s'", dir, err.Error())
+	}
+
+	return nil
+}
+
+func CopySymLink(source, dest string) error {
+	link, err := os.Readlink(source)
+	if err != nil {
+		return err
+	}
+	return os.Symlink(link, dest)
 }
